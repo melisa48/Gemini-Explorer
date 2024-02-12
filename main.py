@@ -1,7 +1,8 @@
+import vertexai
 import streamlit as st
 from vertexai import init, preview
 from vertexai.preview import generative_models
-from vertexai.preview.generative_models import GenerativeModel, GenerationConfig
+from vertexai.preview.generative_models import GenerativeModel, Part, Content, ChatSession, GenerationConfig
 
 # Initialize Vertex AI with your project ID
 init(project="gemini-explorer-413721")
@@ -15,42 +16,56 @@ model = GenerativeModel("gemini-pro", generation_config=config)
 # Start the chat session
 chat = model.start_chat()
 
+
+# helper function to display and send streamlit messages
+def llm_function(chat: ChatSession, query):
+    response = chat.send_message(query)
+    output = response.candidates[0].content.parts[0].text
+    
+    with st.chat_message("model"):
+        st.markdown(output)
+    
+    st.session_state.message.append(
+        {
+            "role": "user",
+            "content": query,
+        }
+    )
+    st.session_state.message.append(
+        {
+            "role": "model",
+            "content": output,
+        }
+    )
+
 # Streamlit UI
 st.title("Gemini Explorer Chat")
 
-# Function to display chat messages
-def display_chat_messages(chat_session, latest_user_input):
-    # Display the latest user input
-    if latest_user_input:
-        st.text("You: " + latest_user_input)
+#Initialize chat session
+if "message" not in st.session_state:
+    st.session_state.message = [] 
 
-    # Display chat history
-    for msg in reversed(chat_session.history):
-        if isinstance(msg, tuple) and len(msg) == 2:
-            user_input, ai_response = msg
-            st.text("You: " + user_input)
-            st.text("Gemini Explorer: " + ai_response)
+# Display and load chat history
+for index, message in enumerate(st.session_state.message):
+    content = Content(
+        role=message["role"],
+        parts=[Part.from_text(message["content"])]  # Corrected the syntax here
+    )
+    with st.chat_message(message["role"]):  # Used the correct role variable here
+        st.markdown(message["content"])
+    chat.history.append(content)
 
-# Main Chat Loop
-st.subheader("")  # Add space between title and input
+# Step 1: Add Initial Message Logic
+if len(st.session_state.message) == 0:  # Corrected variable name here
+    initial_prompt = "Introduce yourself as ReX, an assistant powered by Google Gemini. You use emojis to be interactive"
+    llm_function(chat, initial_prompt)
 
-user_input = st.text_input("Type your message here:", key="user_input")
+# For capture user input
+query = st.chat_input("Gemini Explorer")
 
-if st.button("Send"):
-    if user_input:
-        try:
-            # Try `add_message` first (if available)
-            if hasattr(chat, "add_message"):
-                chat.add_message("User", user_input)
-            else:
-                # Fallback to using `send_message` if `add_message` isn't available
-                chat.send_message(user_input)
-        except Exception as e:
-            # Handle any unexpected errors gracefully
-            st.error(f"Error adding message: {e}")
-
-# Display messages regardless of method used
-display_chat_messages(chat, user_input)
-
+if query:
+    with st.chat_message("user"):
+        st.markdown(query)
+    llm_function(chat, query)
 
 
